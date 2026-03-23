@@ -1,107 +1,87 @@
 # 🗺️ Travel Route Swipe
 
-A Tinder-style city attraction picker that generates an optimised walking route through the places you liked.
-
-**[Live demo →](https://your-app.vercel.app)** ← replace with your Vercel URL after deploying
-
-![App screenshot](screenshot.png)
+A Tinder-style city attraction picker that generates an optimized walking route through the places you like.
 
 ---
 
 ## What it does
 
-1. Type a city name
-2. Swipe through real attractions (powered by Google Places)
-3. Generate an optimised walking route through your liked spots
-4. Choose loop (return to start), path (A→B), or free order
+1. Enter a city name
+2. Swipe through real attractions (Google Places API)
+3. Select your favorite locations
+4. Generate an optimized walking route
+
+   * Loop (return to start)
+   * Path (A → B)
+   * Free order
 
 ---
 
 ## Tech stack
 
-| Layer | Tech |
-|---|---|
-| Frontend | React + Vite + react-leaflet |
-| Backend | Node.js + Express |
-| Routing | OpenRouteService (walking directions) |
-| Places | Google Places API (New) |
-| Geocoding | Nominatim (free, no key needed) |
-| Frontend hosting | Vercel |
-| Backend hosting | Railway |
+| Layer     | Tech                                  |
+| --------- | ------------------------------------- |
+| Frontend  | React + Vite + react-leaflet          |
+| Backend   | Node.js + Express                     |
+| Routing   | OpenRouteService (walking directions) |
+| Places    | Google Places API                     |
+| Geocoding | Nominatim                             |
+
+---
+
+## Features
+
+* Route optimization using **Nearest Neighbor + 2-opt algorithms**
+* Dynamic filtering of attractions based on popularity (review count percentile)
+* Integration with real-world APIs (Google Places, OpenRouteService)
+* Interactive map rendering with Leaflet
+* Swipe-based UI for selecting points of interest
+
+### Backend improvements
+
+* Rate limiting to prevent API abuse
+* Input validation for safer requests
+* Error handling to avoid server crashes
+* Deduplication of POI results
+* API keys secured via environment variables
 
 ---
 
 ## Running locally
 
 ### 1. Clone the repo
+
 ```bash
 git clone https://github.com/yourusername/travel-route-swipe
 cd travel-route-swipe
 npm install
 ```
 
-### 2. Get your API keys
+---
 
-**Google Places API (for attractions + photos)**
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (e.g. "travel-route-swipe")
-3. Go to **APIs & Services → Library** → search "Places API (New)" → Enable it
-4. Go to **APIs & Services → Credentials → + Create Credentials → API Key**
-5. Copy the key
-6. (Recommended) Click the key → under **API restrictions** select "Places API (New)" only
-7. (Recommended) Set a **daily quota cap**: APIs & Services → Places API (New) → Quotas → set max ~200/day
+### 2. Create `.env`
 
-**OpenRouteService (for walking route lines)**
-1. Sign up free at [openrouteservice.org](https://openrouteservice.org)
-2. Go to Dashboard → API Keys → copy your key
+In the root folder:
 
-### 3. Create your `.env` file
-In the project root (same folder as `server.js`):
 ```
-GOOGLE_PLACES_KEY=AIzaSy...
-VITE_ORS_KEY=eyJ...
+GOOGLE_PLACES_KEY=your_key
+VITE_ORS_KEY=your_key
 PORT=4001
 ```
 
-### 4. Run both servers
+---
+
+### 3. Run the app
+
 ```bash
-# Terminal 1 — backend
+# Backend
 node server.js
 
-# Terminal 2 — frontend
+# Frontend
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173)
-
----
-
-## Deploying to the web
-
-### Backend → Railway
-
-1. Push your code to GitHub
-2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
-3. Select your repo
-4. Go to your service → **Variables** tab → add:
-   ```
-   GOOGLE_PLACES_KEY=AIzaSy...
-   PORT=4001
-   ```
-5. Railway will auto-deploy. Copy the generated URL (e.g. `https://travel-route-swipe.up.railway.app`)
-
-### Frontend → Vercel
-
-1. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
-2. Select your repo
-3. Go to **Settings → Environment Variables** → add:
-   ```
-   VITE_ORS_KEY=eyJ...
-   VITE_API_URL=https://travel-route-swipe.up.railway.app
-   ```
-4. Deploy
-
-> ⚠️ After deploying the backend, update the API URL in your frontend from `http://localhost:4001` to your Railway URL. See the note in `App.jsx`.
+Open: http://localhost:5173
 
 ---
 
@@ -109,18 +89,20 @@ Open [http://localhost:5173](http://localhost:5173)
 
 ```
 travel-route-swipe/
-├── server.js          # Express backend — API keys live here only
+├── server.js          # Express backend (API integration, validation, security)
 ├── src/
 │   ├── App.jsx        # Main React app
 │   ├── lib/
-│   │   ├── geo.js     # Haversine distance, route distance helpers
-│   │   ├── ors.js     # OpenRouteService walking directions
-│   │   └── route.js   # Nearest-neighbor + 2-opt route optimisation
+│   │   ├── geo.js     # Distance calculations (Haversine)
+│   │   ├── ors.js     # OpenRouteService integration
+│   │   └── route.js   # Route optimization (NN + 2-opt)
 │   └── components/
 │       └── RecenterMap.jsx
-├── railway.json       # Railway deployment config
-├── vercel.json        # Vercel deployment config
-├── .gitignore         # Keeps .env out of git
+├── index.html
+├── package.json
+├── vite.config.js
+├── .gitignore
+├── env.example
 └── README.md
 ```
 
@@ -128,13 +110,14 @@ travel-route-swipe/
 
 ## Security notes
 
-- API keys are **only in `.env`** which is in `.gitignore` — never committed to git
-- The Google Places key only lives on the server (Railway) — never sent to the browser
-- Set a daily quota cap in Google Cloud Console to prevent surprise bills
-- For extra safety, restrict your Google key to only the Places API in the Cloud Console
+* API keys are stored in `.env` (not committed to Git)
+* External API calls are handled **only on the backend**
+* Rate limiting is applied to prevent abuse
+* Input validation protects against malformed requests
+* Errors are handled safely without exposing internal details
 
 ---
 
 ## License
 
-MIT — feel free to use this for your own projects.
+MIT — feel free to use or adapt.

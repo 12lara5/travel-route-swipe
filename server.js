@@ -2,6 +2,7 @@ import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
 import pg from "pg"
+import rateLimit from "express-rate-limit"
 
 dotenv.config()
 
@@ -28,6 +29,16 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 100, // max 100 requestova po IP-u
+  message: {
+    error: "Too many requests, try again later."
+  }
+})
+
+app.use(limiter)
+
 // ── Google Places config ─────────────────────────────────────────────────────
 // Get your key: console.cloud.google.com → Enable "Places API (New)" → Create API Key
 // Add to .env: GOOGLE_PLACES_KEY=AIza...
@@ -35,23 +46,32 @@ const GOOGLE_KEY = process.env.GOOGLE_PLACES_KEY
 
 // Split into two batches — Google caps Nearby Search at 20 per request.
 // We make 2 calls with different type groups then deduplicate, giving up to 40 results.
+// No religious types — they flood results with every minor church in the city.
+// Focus on things tourists actually seek out.
 const TYPE_BATCH_1 = [
   "tourist_attraction",
   "museum",
   "art_gallery",
   "historical_landmark",
   "cultural_landmark",
-  "monument",
 ]
 
 const TYPE_BATCH_2 = [
-  "church",
-  "hindu_temple",
-  "mosque",
-  "synagogue",
+  "monument",
   "castle",
   "national_park",
   "amphitheatre",
+  "aquarium",
+  "zoo",
+  "amusement_park",
+  "church",
+  "mosque",
+  "synagogue",
+  "hindu_temple",
+  "beach",
+  "hiking_area",
+  "botanical_garden",
+  "marina",
 ]
 
 // ── Nominatim geocode (free, no key needed) ──────────────────────────────────
@@ -76,7 +96,7 @@ async function nearbySearch(lat, lng, types) {
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": GOOGLE_KEY,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.primaryTypeDisplayName,places.photos,places.rating,places.editorialSummary",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.primaryTypeDisplayName,places.photos,places.rating,places.userRatingCount,places.editorialSummary",
       },
       body: JSON.stringify({
         includedTypes: types,
@@ -135,17 +155,28 @@ function extractCategory(place) {
   return place.primaryTypeDisplayName?.text?.toLowerCase() ?? "attraction"
 }
 
+function isValidQuery(q) {
+  if (!q) return false
+  if (typeof q !== "string") return false
+  if (q.length < 2 || q.length > 100) return false
+  return true
+}
+
 // ── GET /api/geocode?q=address ───────────────────────────────────────────────
 app.get("/api/geocode", async (req, res) => {
-  const q = String(req.query.q || "").trim()
-  if (!q) return res.status(400).json({ error: "q is required" })
+  const { q } = req.query
+
+  if (!isValidQuery(q)) {
+    return res.status(400).json({ error: "Invalid query" })
+  } 
   try {
     const data = await geocode(q)
     if (!data.length) return res.status(404).json({ error: "Address not found" })
     const { lat, lon, display_name } = data[0]
     res.json({ lat: Number(lat), lng: Number(lon), display_name })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error(err)
+    res.status(500).json({ error: "Server error" })
   }
 })
 
@@ -164,8 +195,28 @@ app.get("/api/pois", async (req, res) => {
     const places = await fetchGooglePOIs(Number(lat), Number(lon))
 
     // 3. Shape into our POI format
+    // Scale the minimum review threshold by how many results Google returned.
+    // Big cities return 40 places with thousands of reviews each — set bar high.
+    // Small cities like Sibenik return fewer, lower-reviewed places — set bar low.
+    // This way we always get a reasonable deck size regardless of city size.
+    const reviewCounts = places
+      .map((p) => p.userRatingCount ?? 0)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b)
+
+    // Use the 30th percentile as the cutoff — keeps top 70% of results
+    // but never goes below 50 (avoid truly unknown spots) or above 300
+    const p30index = Math.floor(reviewCounts.length * 0.3)
+    const dynamicMin = Math.min(300, Math.max(50, reviewCounts[p30index] ?? 50))
+
+    console.log(`[pois] review threshold for ${cityQuery}: ${dynamicMin}`)
+
     const pois = places
-      .filter((p) => p.location?.latitude && p.displayName?.text)
+      .filter((p) => {
+        if (!p.location?.latitude || !p.displayName?.text) return false
+        const reviews = p.userRatingCount ?? 0
+        return reviews >= dynamicMin
+      })
       .map((p) => ({
         id: p.id,
         name: p.displayName.text,
@@ -174,8 +225,14 @@ app.get("/api/pois", async (req, res) => {
         lng: p.location.longitude,
         photo: extractGooglePhoto(p),
         rating: p.rating ?? null,
+        reviews: p.userRatingCount ?? null,
         description: p.editorialSummary?.text ?? null,
       }))
+      .filter((p, index, self) =>
+        index === self.findIndex((x) => x.id === p.id)
+      )     
+      // Sort by review count — most visited places first
+      .sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0))
 
     console.log(`[pois] "${cityQuery}" → ${pois.length} Google Places results`)
 
@@ -221,4 +278,11 @@ server.on("error", (err) => {
     console.error("Server error:", err)
   }
   process.exit(1)
+})
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err)
+})
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err)
 })

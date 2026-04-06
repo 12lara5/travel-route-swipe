@@ -1,29 +1,19 @@
-export async function getWalkingRouteLatLng(start, end) {
-  const key = import.meta.env.VITE_ORS_KEY
-  if (!key) throw new Error("Missing VITE_ORS_KEY")
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4001";
 
-  const res = await fetch(
-    "https://api.openrouteservice.org/v2/directions/foot-hiking/geojson",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: key,
-      },
-      body: JSON.stringify({
-        coordinates: [
-          [start.lng, start.lat],
-          [end.lng, end.lat],
-        ],
-      }),
-    }
-  )
+export async function getWalkingRouteLatLng(start, end) {
+  const res = await fetch(`${API_URL}/api/route`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ start, end }),
+  });
 
   if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(`ORS error ${res.status}: ${txt}`)
+    const txt = await res.text();
+    throw new Error(`Server error ${res.status}: ${txt}`);
   }
 
-  const geo = await res.json()
-  return geo.features[0].geometry.coordinates.map(([lng, lat]) => [lat, lng])
+  const geo = await res.json();
+  return geo.features[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 }

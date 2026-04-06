@@ -29,6 +29,39 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+// Ruta za dohvaćanje rute (Proxy za OpenRouteService)
+app.post("/api/route", async (req, res) => {
+  const { start, end } = req.body;
+  const key = process.env.ORS_KEY; 
+
+  try {
+    const response = await fetch("https://api.openrouteservice.org/v2/directions/foot-hiking/geojson", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": key,
+      },
+      body: JSON.stringify({
+        coordinates: [
+          [start.lng, start.lat],
+          [end.lng, end.lat],
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error("ORS Proxy Error:", error);
+    res.status(500).json({ error: "Failed to fetch route from server" });
+  }
+});
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 100, // max 100 requestova po IP-u
